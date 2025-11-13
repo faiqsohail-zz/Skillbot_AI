@@ -1,140 +1,274 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from supabase import create_client, Client
-from io import BytesIO
 import json
+import os
+from datetime import datetime
+from supabase import create_client, Client
 
-# --- SUPABASE CONFIG ---
+# -------------------- SUPABASE SETUP --------------------
 SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphenRva3V5enhldHRlbWV4Y3JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTU4OTMsImV4cCI6MjA3ODUzMTg5M30.I7Q-fAKRqYFzsJoyt7jQD1Vm1eB0sQKo17-ikA5VFBY"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- STREAMLIT PAGE CONFIG ---
-st.set_page_config(page_title="SkillBot Personality Profiler", layout="wide")
+# -------------------- PAGE SETUP --------------------
+st.set_page_config(page_title="SkillBot Career & Personality Profiler", layout="centered")
 
-# --- SESSION STATE ---
-if "user" not in st.session_state:
-    st.session_state.user = None
-if "test_result" not in st.session_state:
-    st.session_state.test_result = None
+# -------------------- LOAD DATA --------------------
+try:
+    questions = pd.read_csv("questions.csv")
+    careers = pd.read_csv("careers.csv")
+    tci_questions = pd.read_csv("tci_questions.csv")
+except FileNotFoundError as e:
+    st.error(f"Error loading data file: {e}")
+    st.stop()
 
-# --- AUTH FUNCTIONS ---
-def signup(email, password):
+# -------------------- SESSION STATE --------------------
+defaults = {
+    "page": "intro",
+    "index": 0,
+    "answers": [],
+    "tci_page": "intro",
+    "tci_index": 0,
+    "tci_answers": [],
+    "riasec_scores": None,
+    "tci_scores": None,
+    "sidebar_choice": "Home",
+    "user": None,  # Supabase user object
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+def restart_all():
+    for k, v in defaults.items():
+        st.session_state[k] = v
+
+# -------------------- AUTH HELPERS --------------------
+def signup_user(email, password):
     return supabase.auth.sign_up({"email": email, "password": password})
 
-def login(email, password):
+def login_user(email, password):
     return supabase.auth.sign_in_with_password({"email": email, "password": password})
 
-def logout():
+def logout_user():
     st.session_state.user = None
-    st.session_state.test_result = None
+    st.session_state.sidebar_choice = "Home"
+    st.success("Logged out successfully!")
 
-# --- PROFILE CREATION ---
-def create_profile(user_id):
-    st.subheader("👤 Create Your Profile")
-    full_name = st.text_input("Full Name")
-    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-    age = st.number_input("Age", min_value=10, max_value=100, step=1)
-    qualification = st.selectbox(
-        "Qualification Level", ["Matric", "Intermediate", "Bachelors", "Masters", "PhD"]
-    )
-    marksheet = st.file_uploader("Upload Marksheet (image/pdf)", type=["jpg", "jpeg", "png", "pdf"])
+# -------------------- DB SAVE HELPERS --------------------
+def save_results_to_supabase(user_id, riasec, tci):
+    try:
+        supabase.table("test_results").insert({
+            "user_id": user_id,
+            "riasec": json.dumps(riasec.to_dict()),
+            "tci": json.dumps(tci.to_dict())
+        }).execute()
+        st.info("✅ Test results saved to your account.")
+    except Exception as e:
+        st.warning(f"⚠️ Could not save results: {e}")
 
-    if st.button("Save Profile"):
-        marksheet_url = None
-        if marksheet:
-            file_bytes = marksheet.read()
-            filename = f"{user_id}_{marksheet.name}"
-            res = supabase.storage.from_("marksheets").upload(filename, file_bytes)
-            marksheet_url = supabase.storage.from_("marksheets").get_public_url(filename)
-        
+def upload_marksheet(user_id, file):
+    try:
+        file_bytes = file.read()
+        filename = f"{user_id}_{file.name}"
+        supabase.storage.from_("marksheets").upload(filename, file_bytes)
+        return supabase.storage.from_("marksheets").get_public_url(filename)
+    except Exception as e:
+        st.error(f"Error uploading file: {e}")
+        return None
+
+def save_profile(user_id, name, gender, age, qualification, marksheet_url):
+    try:
         supabase.table("profiles").upsert({
             "id": user_id,
-            "full_name": full_name,
+            "full_name": name,
             "gender": gender,
             "age": age,
             "qualification": qualification,
             "marksheet_url": marksheet_url
         }).execute()
-        st.success("✅ Profile saved successfully!")
+        st.success("✅ Profile created successfully!")
+    except Exception as e:
+        st.error(f"Failed to save profile: {e}")
 
-# --- TEST SIMULATION (replace with your logic) ---
-def conduct_test():
-    st.subheader("🧠 Conduct Your Personality Test")
-    q1 = st.slider("I enjoy working in teams", 1, 5, 3)
-    q2 = st.slider("I stay calm under pressure", 1, 5, 3)
-    q3 = st.slider("I like solving complex problems", 1, 5, 3)
-    if st.button("Submit Test"):
-        score = (q1 + q2 + q3) / 3 * 20
-        st.session_state.test_result = {"score": score, "details": {"q1": q1, "q2": q2, "q3": q3}}
-        st.success(f"Your score: {score:.2f}")
-        st.session_state.page = "dashboard"
+# -------------------- HELPER FUNCTIONS --------------------
+def next_question(selected):
+    st.session_state.answers.append(selected)
+    st.session_state.index += 1
+    if st.session_state.index >= len(questions):
+        st.session_state.page = "riasec_results"
+    st.rerun()
 
-# --- DASHBOARD ---
-def show_dashboard():
-    result = st.session_state.test_result
-    st.subheader("📊 Personality Dashboard")
-    df = pd.DataFrame([result["details"]])
-    fig = px.bar(df, title="Your Responses")
-    st.plotly_chart(fig, use_container_width=True)
+def next_tci(selected):
+    st.session_state.tci_answers.append(selected)
+    st.session_state.tci_index += 1
+    if st.session_state.tci_index >= len(tci_questions):
+        st.session_state.tci_page = "tci_results"
+    st.rerun()
 
-    st.info(f"Overall Personality Score: {result['score']:.2f}")
+# =====================================================
+# SIDEBAR NAVIGATION
+# =====================================================
+st.sidebar.title("🧭 Navigation")
+options = ["Home", "RIASEC Test", "TCI Test", "Dashboard", "Sign Up / Login", "Profile Creation (Hidden)"]
 
-    if st.button("Do You Want More Personalized Results?"):
-        if st.session_state.user:
-            create_profile(st.session_state.user.id)
-        else:
-            st.session_state.page = "auth"
+choice = st.sidebar.radio("Choose a section:", options, index=options.index(st.session_state.sidebar_choice))
+st.session_state.sidebar_choice = choice
 
-# --- SAVE TEST RESULTS ---
-def save_result_to_db(user_id, result):
-    supabase.table("test_results").insert({
-        "user_id": user_id,
-        "score": result["score"],
-        "details": json.dumps(result["details"])
-    }).execute()
+# =====================================================
+# HOME PAGE
+# =====================================================
+if choice == "Home":
+    st.title("🎓 SkillBot Career & Personality Profiler")
+    st.write("""
+        Discover your ideal **career path** and **personality traits** using:
+        - **RIASEC (Holland Codes)**  
+        - **TCI (Temperament & Character Inventory)**
+    """)
+    if st.button("Start Now ➡️"):
+        st.session_state.page = "quiz"
+        st.session_state.sidebar_choice = "RIASEC Test"
+        st.rerun()
 
-# --- AUTH UI ---
-def auth_ui():
+# =====================================================
+# RIASEC TEST
+# =====================================================
+elif choice == "RIASEC Test":
+    if st.session_state.page == "intro":
+        st.title("🧭 RIASEC Interest Profiler")
+        if st.button("Start RIASEC Test"):
+            st.session_state.page = "quiz"
+            st.session_state.index = 0
+            st.session_state.answers = []
+            st.rerun()
+    elif st.session_state.page == "quiz":
+        q_idx = st.session_state.index
+        if q_idx < len(questions):
+            q = questions.iloc[q_idx]
+            st.markdown(f"### Question {q_idx + 1} of {len(questions)}")
+            st.markdown(f"**{q['question']}**")
+            options = {"Strongly Disagree":"😠","Disagree":"🙁","Neutral":"😐","Agree":"🙂","Strongly Agree":"🤩"}
+            cols = st.columns(len(options))
+            for i, (label, icon) in enumerate(options.items()):
+                if cols[i].button(f"{icon} {label}", key=f"riasec_q{q_idx}_{i}"):
+                    next_question(label)
+    elif st.session_state.page == "riasec_results":
+        st.title("Your RIASEC Profile")
+        df = questions.copy()
+        df["answer"] = st.session_state.answers
+        rating_map = {"Strongly Disagree":1,"Disagree":2,"Neutral":3,"Agree":4,"Strongly Agree":5}
+        df["score"] = df["answer"].map(rating_map)
+        riasec_scores = df.groupby("category")["score"].mean().sort_values(ascending=False)
+        st.session_state.riasec_scores = riasec_scores
+        st.bar_chart(riasec_scores)
+        top = riasec_scores.head(3).index.tolist()
+        st.success(f"Your top RIASEC types are: **{', '.join(top)}**")
+        if st.button("Next ➡️ Go to TCI Test"):
+            st.session_state.sidebar_choice = "TCI Test"
+            st.rerun()
+
+# =====================================================
+# TCI TEST
+# =====================================================
+elif choice == "TCI Test":
+    if st.session_state.tci_page == "intro":
+        st.title("🧠 Temperament & Character Inventory (TCI)")
+        if st.button("Start TCI Test"):
+            st.session_state.tci_page = "quiz"
+            st.session_state.tci_index = 0
+            st.session_state.tci_answers = []
+            st.rerun()
+    elif st.session_state.tci_page == "quiz":
+        q_idx = st.session_state.tci_index
+        if q_idx < len(tci_questions):
+            q = tci_questions.iloc[q_idx]
+            st.markdown(f"### Question {q_idx + 1} of {len(tci_questions)}")
+            st.markdown(f"**{q['question']}**")
+            col1, col2 = st.columns(2)
+            if col1.button("✅ True", key=f"tci_t{q_idx}"):
+                next_tci("T")
+            if col2.button("❌ False", key=f"tci_f{q_idx}"):
+                next_tci("F")
+    elif st.session_state.tci_page == "tci_results":
+        st.title("Your TCI Personality Profile")
+        df = tci_questions.copy()
+        df["answer"] = st.session_state.tci_answers
+        df["score"] = df["answer"].map({"T": 1, "F": 0})
+        tci_scores = df.groupby("trait")["score"].sum()
+        st.session_state.tci_scores = tci_scores
+        fig = px.bar(tci_scores, x=tci_scores.index, y=tci_scores.values, labels={"x": "Trait","y": "Score"})
+        st.plotly_chart(fig, use_container_width=True)
+        if st.button("View Combined Dashboard ➡️"):
+            st.session_state.sidebar_choice = "Dashboard"
+            st.rerun()
+
+# =====================================================
+# DASHBOARD
+# =====================================================
+elif choice == "Dashboard":
+    st.title("📊 Combined Career & Personality Dashboard")
+    r, t = st.session_state.riasec_scores, st.session_state.tci_scores
+    if r is None or t is None:
+        st.warning("Please complete both tests first.")
+    else:
+        c1, c2 = st.columns(2)
+        with c1: st.subheader("RIASEC"); st.bar_chart(r)
+        with c2: st.subheader("TCI"); st.bar_chart(t)
+        st.divider()
+        st.info("Use both profiles to guide your career choices!")
+        if st.button("✨ Want more personalized results?"):
+            st.session_state.sidebar_choice = "Sign Up / Login"
+            st.rerun()
+
+# =====================================================
+# SIGN UP / LOGIN
+# =====================================================
+elif choice == "Sign Up / Login":
+    st.title("🔐 Account")
     tab1, tab2 = st.tabs(["Login", "Sign Up"])
+
     with tab1:
         email = st.text_input("Email", key="login_email")
-        password = st.text_input("Password", type="password", key="login_password")
+        password = st.text_input("Password", type="password", key="login_pass")
         if st.button("Login"):
-            res = login(email, password)
+            res = login_user(email, password)
             if res.user:
                 st.session_state.user = res.user
                 st.success("✅ Logged in successfully!")
+                st.session_state.sidebar_choice = "Profile Creation (Hidden)"
+                st.rerun()
+
     with tab2:
         email = st.text_input("Email", key="signup_email")
-        password = st.text_input("Password", type="password", key="signup_password")
+        password = st.text_input("Password", type="password", key="signup_pass")
         if st.button("Sign Up"):
-            res = signup(email, password)
+            res = signup_user(email, password)
             if res.user:
                 st.session_state.user = res.user
                 st.success("✅ Account created successfully!")
+                st.session_state.sidebar_choice = "Profile Creation (Hidden)"
+                st.rerun()
 
-# --- APP FLOW CONTROLLER ---
-if "page" not in st.session_state:
-    st.session_state.page = "test"
+# =====================================================
+# PROFILE CREATION
+# =====================================================
+elif choice == "Profile Creation (Hidden)":
+    st.title("👤 Create Your Profile")
+    if st.session_state.user is None:
+        st.warning("Please login first.")
+    else:
+        name = st.text_input("Full Name")
+        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+        age = st.number_input("Age", min_value=10, max_value=100)
+        qualification = st.selectbox("Qualification", ["Matric","Intermediate","Bachelors","Masters","PhD"])
+        marksheet = st.file_uploader("Upload Marksheet", type=["jpg","jpeg","png","pdf"])
 
-st.title("🎯 SkillBot Personality Profiler")
-
-if st.session_state.page == "test":
-    conduct_test()
-elif st.session_state.page == "dashboard":
-    show_dashboard()
-elif st.session_state.page == "auth":
-    auth_ui()
-    if st.session_state.user and st.session_state.test_result:
-        save_result_to_db(st.session_state.user.id, st.session_state.test_result)
-        st.success("✅ Test results saved to your account!")
-        create_profile(st.session_state.user.id)
-elif st.session_state.page == "profile":
-    create_profile(st.session_state.user.id)
-
-if st.session_state.user:
-    if st.button("Logout"):
-        logout()
-        st.session_state.page = "test"
+        if st.button("Submit Profile"):
+            if not all([name, gender, age, qualification, marksheet]):
+                st.error("Please fill all fields.")
+            else:
+                url = upload_marksheet(st.session_state.user.id, marksheet)
+                save_profile(st.session_state.user.id, name, gender, age, qualification, url)
+                if st.session_state.riasec_scores is not None and st.session_state.tci_scores is not None:
+                    save_results_to_supabase(st.session_state.user.id, st.session_state.riasec_scores, st.session_state.tci_scores)
