@@ -6,8 +6,8 @@ from io import BytesIO
 import json
 
 # --- SUPABASE CONFIG ---
-SUPABASE_URL = "https://YOUR_PROJECT_URL.supabase.co"
-SUPABASE_KEY = "YOUR_ANON_KEY"
+SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphenRva3V5enhldHRlbWV4Y3JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTU4OTMsImV4cCI6MjA3ODUzMTg5M30.I7Q-fAKRqYFzsJoyt7jQD1Vm1eB0sQKo17-ikA5VFBY"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- STREAMLIT PAGE CONFIG ---
