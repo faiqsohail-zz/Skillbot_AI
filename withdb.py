@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime
 from supabase import create_client, Client
-import os
 
 # -------------------- SUPABASE SETUP --------------------
 SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
