@@ -84,30 +84,28 @@ def save_results_to_supabase(user_id, riasec, tci):
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
 
-
-
-
-
-
-
 def upload_marksheet(user_id, file):
     try:
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
-        
-        # Upload file
-        supabase.storage.from_("marksheets").upload(filename, file_bytes)
-        
-        # Get public URL
-        url_response = supabase.storage.from_("marksheets").get_public_url(filename)
-        public_url = url_response.data["publicUrl"]  # note capitalization
 
-        st.success("✅ Marksheet uploaded successfully!")
-        return public_url
+        # Upload to Supabase storage
+        response = supabase.storage.from_("marksheets").upload(filename, file_bytes)
+
+        # Check if upload succeeded
+        if response:
+            # Get the public URL
+            url_response = supabase.storage.from_("marksheets").get_public_url(filename)
+            # url_response is a dict with {"public_url": "..."}
+            return url_response["public_url"]
+        else:
+            st.error("Upload failed: unknown error")
+            return None
 
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
+
 
 
 
