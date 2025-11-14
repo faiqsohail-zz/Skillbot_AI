@@ -76,13 +76,14 @@ def save_results_to_supabase(user_id, riasec, tci):
             "tci": tci.to_dict()
         }).execute()
 
-        if response.status_code in [200, 201]:
-            st.info("✅ Test results saved to your account.")
-        else:
+        if response.error:
             st.warning(f"⚠️ Could not save results: {response.error}")
+        else:
+            st.info("✅ Test results saved to your account.")
 
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
+
 
 
 
@@ -121,13 +122,14 @@ def save_profile(user_id, name, gender, age, qualification, marksheet_url):
             "marksheet_url": marksheet_url
         }).execute()
         
-        if response.status_code in [200, 201]:
-            st.success("✅ Profile created successfully!")
-        else:
+        if response.error:
             st.error(f"Failed to save profile: {response.error}")
+        else:
+            st.success("✅ Profile created successfully!")
 
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
+
 
 
 
