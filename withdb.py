@@ -10,6 +10,17 @@ from supabase import create_client, Client
 SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphenRva3V5enhldHRlbWV4Y3JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTU4OTMsImV4cCI6MjA3ODUzMTg5M30.I7Q-fAKRqYFzsJoyt7jQD1Vm1eB0sQKo17-ikA5VFBY"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_auth_client():
+    token = st.session_state.get("access_token")
+    if not token:
+        return supabase
+    return create_client(
+        SUPABASE_URL,
+        SUPABASE_KEY,
+        {"Authorization": f"Bearer {token}"}
+    )
+
 st.write(os.getenv("SUPABASE_URL"))
 st.write(os.getenv("SUPABASE_KEY")[:5])  # only first 5 chars for check
 # -------------------- PAGE SETUP --------------------
@@ -60,31 +71,34 @@ def logout_user():
 # -------------------- DB SAVE HELPERS --------------------
 def save_results_to_supabase(user_id, riasec, tci):
     try:
-        supabase.table("test_results").insert({
+        client = get_auth_client()
+        client.table("test_results").insert({
             "user_id": user_id,
             "riasec": riasec.to_dict(),
             "tci": tci.to_dict()
         }).execute()
-
         st.info("✅ Test results saved to your account.")
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
 
 
+
 def upload_marksheet(user_id, file):
     try:
+        client = get_auth_client()
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
-        supabase.storage.from_("marksheets").upload(filename, file_bytes)
-        return supabase.storage.from_("marksheets").get_public_url(filename)
+        client.storage.from_("marksheets").upload(filename, file_bytes)
+        return client.storage.from_("marksheets").get_public_url(filename)
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
 
 def save_profile(user_id, name, gender, age, qualification, url):
     try:
-        supabase.table("profiles").upsert({
-            "user_id": user_id,         # FIXED
+        client = get_auth_client()
+        client.table("profiles").upsert({
+            "user_id": user_id,
             "full_name": name,
             "gender": gender,
             "age": age,
@@ -94,6 +108,7 @@ def save_profile(user_id, name, gender, age, qualification, url):
         st.success("✅ Profile created successfully!")
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
+
 
 # -------------------- HELPER FUNCTIONS --------------------
 def next_question(selected):
@@ -238,6 +253,7 @@ elif choice == "Sign Up / Login":
             res = login_user(email, password)
             if res.user:
                 st.session_state.user = res.user
+                st.session_state.access_token = res.session.access_token
                 st.success("✅ Logged in successfully!")
                 st.session_state.sidebar_choice = "Profile Creation (Hidden)"
                 st.rerun()
@@ -249,6 +265,7 @@ elif choice == "Sign Up / Login":
             res = signup_user(email, password)
             if res.user:
                 st.session_state.user = res.user
+                st.session_state.access_token = res.session.access_token
                 st.success("✅ Account created successfully!")
                 st.session_state.sidebar_choice = "Profile Creation (Hidden)"
                 st.rerun()
