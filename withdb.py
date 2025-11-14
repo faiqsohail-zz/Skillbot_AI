@@ -90,13 +90,11 @@ def upload_marksheet(user_id, file):
         filename = f"{user_id}_{file.name}"
 
         # Upload file
-        upload_response = supabase.storage.from_("marksheets").upload(filename, file_bytes)
+        supabase.storage.from_("marksheets").upload(filename, file_bytes)
 
-        # Get public URL
-        url_response = supabase.storage.from_("marksheets").get_public_url(filename)
+        # Get public URL (returns a string in v2)
+        public_url = supabase.storage.from_("marksheets").get_public_url(filename)
 
-        # url_response is an APIResponse object; actual data is in .data
-        public_url = url_response.data["public_url"]
         return public_url
 
     except Exception as e:
