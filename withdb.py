@@ -89,22 +89,20 @@ def upload_marksheet(user_id, file):
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
 
-        # Upload to Supabase storage
-        response = supabase.storage.from_("marksheets").upload(filename, file_bytes)
+        # Upload file
+        upload_response = supabase.storage.from_("marksheets").upload(filename, file_bytes)
 
-        # Check if upload succeeded
-        if response:
-            # Get the public URL
-            url_response = supabase.storage.from_("marksheets").get_public_url(filename)
-            # url_response is a dict with {"public_url": "..."}
-            return url_response["public_url"]
-        else:
-            st.error("Upload failed: unknown error")
-            return None
+        # Get public URL
+        url_response = supabase.storage.from_("marksheets").get_public_url(filename)
+
+        # url_response is an APIResponse object; actual data is in .data
+        public_url = url_response.data["public_url"]
+        return public_url
 
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
+
 
 
 
