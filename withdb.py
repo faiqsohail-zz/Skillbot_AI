@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 from supabase import create_client, Client
 
 # -------------------- SUPABASE SETUP --------------------
 SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphenRva3V5enhldHRlbWV4Y3JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTU4OTMsImV4cCI6MjA3ODUzMTg5M30.I7Q-fAKRqYFzsJoyt7jQD1Vm1eB0sQKo17-ikA5VFBY"
+SUPABASE_KEY = "YOUR_SUPABASE_KEY"  # Replace with your key
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------- PAGE SETUP --------------------
@@ -32,7 +31,7 @@ defaults = {
     "riasec_scores": None,
     "tci_scores": None,
     "sidebar_choice": "Home",
-    "user": None,
+    "user": None,  # Supabase user object
     "access_token": None
 }
 for k, v in defaults.items():
@@ -65,10 +64,10 @@ def save_results_to_supabase(user_id, riasec, tci):
             "tci": tci.to_dict()
         }).execute()
 
-        if response.error is None:
+        if response.data is not None:
             st.success("✅ Test results saved to your account.")
         else:
-            st.warning(f"⚠️ Could not save results: {response.error.message}")
+            st.warning("⚠️ Could not save results. Check your table schema or permissions.")
 
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
@@ -77,9 +76,16 @@ def upload_marksheet(user_id, file):
     try:
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
+
+        # Upload file
         supabase.storage.from_("marksheets").upload(filename, file_bytes)
-        public_url = supabase.storage.from_("marksheets").get_public_url(filename)
+
+        # Get public URL (dict with 'public_url')
+        public_url = supabase.storage.from_("marksheets").get_public_url(filename)["public_url"]
+
+        st.success("✅ Marksheet uploaded successfully!")
         return public_url
+
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
@@ -95,10 +101,10 @@ def save_profile(user_id, name, gender, age, qualification, marksheet_url):
             "marksheet_url": marksheet_url
         }).execute()
 
-        if response.error is None:
+        if response.data is not None:
             st.success("✅ Profile created successfully!")
         else:
-            st.warning(f"⚠️ Could not save profile: {response.error.message}")
+            st.warning("⚠️ Could not save profile. Check your table schema or permissions.")
 
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
@@ -280,26 +286,12 @@ elif choice == "Profile Creation (Hidden)":
             if not all([name, gender, age, qualification, marksheet]):
                 st.error("Please fill all fields.")
             else:
-                # Step 1: Upload marksheet
-                url = upload_marksheet(st.session_state.user.id, marksheet)
-                if url:
-                    st.success("✅ Marksheet uploaded successfully!")
-                else:
-                    st.warning("⚠️ Failed to upload marksheet.")
-
-                # Step 2: Save profile
-                try:
-                    save_profile(st.session_state.user.id, name, gender, age, qualification, url)
-                except Exception as e:
-                    st.warning(f"⚠️ Could not save profile: {e}")
-
-                # Step 3: Save test results (if available)
-                if st.session_state.riasec_scores is not None and st.session_state.tci_scores is not None:
-                    try:
+                marksheet_url = upload_marksheet(st.session_state.user.id, marksheet)
+                if marksheet_url:
+                    save_profile(
+                        st.session_state.user.id, name, gender, age, qualification, marksheet_url
+                    )
+                    if st.session_state.riasec_scores is not None and st.session_state.tci_scores is not None:
                         save_results_to_supabase(
-                            st.session_state.user.id,
-                            st.session_state.riasec_scores,
-                            st.session_state.tci_scores
+                            st.session_state.user.id, st.session_state.riasec_scores, st.session_state.tci_scores
                         )
-                    except Exception as e:
-                        st.warning(f"⚠️ Could not save test results: {e}")
