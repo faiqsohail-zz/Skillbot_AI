@@ -62,12 +62,14 @@ def save_results_to_supabase(user_id, riasec, tci):
     try:
         supabase.table("test_results").insert({
             "user_id": user_id,
-            "riasec": json.dumps(riasec.to_dict()),
-            "tci": json.dumps(tci.to_dict())
+            "riasec": riasec.to_dict(),
+            "tci": tci.to_dict()
         }).execute()
+
         st.info("✅ Test results saved to your account.")
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
+
 
 def upload_marksheet(user_id, file):
     try:
@@ -79,15 +81,15 @@ def upload_marksheet(user_id, file):
         st.error(f"Error uploading file: {e}")
         return None
 
-def save_profile(user_id, name, gender, age, qualification, marksheet_url):
+def save_profile(user_id, name, gender, age, qualification, url):
     try:
         supabase.table("profiles").upsert({
-            "user_id": user_id,
+            "user_id": user_id,         # FIXED
             "full_name": name,
             "gender": gender,
             "age": age,
             "qualification": qualification,
-            "marksheet_url": marksheet_url
+            "marksheet_url": url
         }).execute()
         st.success("✅ Profile created successfully!")
     except Exception as e:
