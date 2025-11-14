@@ -87,11 +87,11 @@ def upload_marksheet(user_id, file):
     try:
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
-        res = supabase.storage.from_("marksheets").upload(filename, file_bytes, upsert=True)
-        # res is a dict like {'Key': 'filename'}
-        if res.get("Key"):
+        # Remove 'upsert' argument
+        res = supabase.storage.from_("marksheets").upload(filename, file_bytes)
+        # Check if the response has a Key (success)
+        if "Key" in res:
             url_dict = supabase.storage.from_("marksheets").get_public_url(filename)
-            # get_public_url returns a dict: {"publicUrl": "..."}
             return url_dict["publicUrl"]
         else:
             st.error(f"Upload failed: {res}")
