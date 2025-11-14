@@ -65,10 +65,10 @@ def save_results_to_supabase(user_id, riasec, tci):
             "tci": tci.to_dict()
         }).execute()
 
-        if response.status_code == 201:
+        if response.error is None:
             st.success("✅ Test results saved to your account.")
         else:
-            st.warning(f"⚠️ Could not save results. Status code: {response.status_code}, {response.data}")
+            st.warning(f"⚠️ Could not save results: {response.error.message}")
 
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
@@ -95,10 +95,10 @@ def save_profile(user_id, name, gender, age, qualification, marksheet_url):
             "marksheet_url": marksheet_url
         }).execute()
 
-        if response.status_code in [200, 201]:
+        if response.error is None:
             st.success("✅ Profile created successfully!")
         else:
-            st.warning(f"⚠️ Could not save profile. Status code: {response.status_code}, {response.data}")
+            st.warning(f"⚠️ Could not save profile: {response.error.message}")
 
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
