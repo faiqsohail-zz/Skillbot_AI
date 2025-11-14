@@ -87,19 +87,21 @@ def upload_marksheet(user_id, file):
     try:
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
-        # Upload the file
-        res = supabase.storage.from_("marksheets").upload(filename, file_bytes)
         
-        # Get public URL
+        # Upload the file (no upsert)
+        supabase.storage.from_("marksheets").upload(filename, file_bytes)
+        
+        # Get public URL (returns a dict)
         url_dict = supabase.storage.from_("marksheets").get_public_url(filename)
-        public_url = url_dict.public_url  # this is the correct attribute in v2
-
+        public_url = url_dict["public_url"]  # <-- correct way
+        
         st.success("✅ Marksheet uploaded successfully!")
         return public_url
 
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
+
 
 
 def save_profile(user_id, name, gender, age, qualification, url):
