@@ -21,8 +21,7 @@ def get_auth_client():
         {"Authorization": f"Bearer {token}"}
     )
 
-st.write(os.getenv("SUPABASE_URL"))
-st.write(os.getenv("SUPABASE_KEY")[:5])  # only first 5 chars for check
+
 # -------------------- PAGE SETUP --------------------
 st.set_page_config(page_title="SkillBot Career & Personality Profiler", layout="centered")
 
@@ -71,12 +70,15 @@ def logout_user():
 # -------------------- DB SAVE HELPERS --------------------
 def save_results_to_supabase(user_id, riasec, tci):
     try:
-        supabase.table("test_results").insert({
+        response = supabase.table("test_results").insert({
             "user_id": user_id,
-            "riasec": riasec.to_dict() if hasattr(riasec, "to_dict") else dict(riasec),
-            "tci": tci.to_dict() if hasattr(tci, "to_dict") else dict(tci)
+            "riasec": riasec.to_dict(),
+            "tci": tci.to_dict()
         }).execute()
-        st.info("✅ Test results saved to your account.")
+        if response.get("status_code") in [200, 201]:
+            st.info("✅ Test results saved to your account.")
+        else:
+            st.warning(f"⚠️ Could not save results: {response}")
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
 
@@ -88,13 +90,13 @@ def upload_marksheet(user_id, file):
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
         
-        # Upload the file (no upsert)
+        # Upload file
         supabase.storage.from_("marksheets").upload(filename, file_bytes)
         
-        # Get public URL (returns a dict)
-        url_dict = supabase.storage.from_("marksheets").get_public_url(filename)
-        public_url = url_dict["public_url"]  # <-- correct way
-        
+        # Get public URL
+        url_response = supabase.storage.from_("marksheets").get_public_url(filename)
+        public_url = url_response.data["publicUrl"]  # note capitalization
+
         st.success("✅ Marksheet uploaded successfully!")
         return public_url
 
@@ -104,18 +106,22 @@ def upload_marksheet(user_id, file):
 
 
 
-def save_profile(user_id, name, gender, age, qualification, url):
+
+def save_profile(user_id, name, gender, age, qualification, marksheet_url):
     try:
-        client = get_auth_client()
-        client.table("profiles").upsert({
+        response = supabase.table("profiles").upsert({
             "user_id": user_id,
             "full_name": name,
             "gender": gender,
             "age": age,
             "qualification": qualification,
-            "marksheet_url": url
+            "marksheet_url": marksheet_url
         }).execute()
-        st.success("✅ Profile created successfully!")
+        # response is a dict
+        if response.get("status_code") in [200, 201]:
+            st.success("✅ Profile created successfully!")
+        else:
+            st.error(f"Failed to save profile: {response}")
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
 
