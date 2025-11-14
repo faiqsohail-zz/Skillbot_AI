@@ -71,11 +71,10 @@ def logout_user():
 # -------------------- DB SAVE HELPERS --------------------
 def save_results_to_supabase(user_id, riasec, tci):
     try:
-        client = get_auth_client()
-        client.table("test_results").insert({
+        supabase.table("test_results").insert({
             "user_id": user_id,
-            "riasec": riasec.to_dict(),
-            "tci": tci.to_dict()
+            "riasec": riasec.to_dict() if hasattr(riasec, "to_dict") else dict(riasec),
+            "tci": tci.to_dict() if hasattr(tci, "to_dict") else dict(tci)
         }).execute()
         st.info("✅ Test results saved to your account.")
     except Exception as e:
@@ -83,13 +82,20 @@ def save_results_to_supabase(user_id, riasec, tci):
 
 
 
+
 def upload_marksheet(user_id, file):
     try:
-        client = get_auth_client()
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
-        client.storage.from_("marksheets").upload(filename, file_bytes)
-        return client.storage.from_("marksheets").get_public_url(filename)
+        res = supabase.storage.from_("marksheets").upload(filename, file_bytes, upsert=True)
+        # res is a dict like {'Key': 'filename'}
+        if res.get("Key"):
+            url_dict = supabase.storage.from_("marksheets").get_public_url(filename)
+            # get_public_url returns a dict: {"publicUrl": "..."}
+            return url_dict["publicUrl"]
+        else:
+            st.error(f"Upload failed: {res}")
+            return None
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
