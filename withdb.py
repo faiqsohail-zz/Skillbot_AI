@@ -76,13 +76,14 @@ def save_results_to_supabase(user_id, riasec, tci):
             "tci": tci.to_dict()
         }).execute()
 
-        if response.error:
-            st.warning(f"⚠️ Could not save results: {response.error}")
-        else:
+        if response.data:
             st.info("✅ Test results saved to your account.")
+        else:
+            st.warning("⚠️ Could not save results. Check your table schema or permissions.")
 
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
+
 
 
 
@@ -121,11 +122,12 @@ def save_profile(user_id, name, gender, age, qualification, marksheet_url):
             "qualification": qualification,
             "marksheet_url": marksheet_url
         }).execute()
-        
-        if response.error:
-            st.error(f"Failed to save profile: {response.error}")
-        else:
+
+        # Check if any data was returned
+        if response.data:
             st.success("✅ Profile created successfully!")
+        else:
+            st.warning("⚠️ Could not save profile. Check your table schema or permissions.")
 
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
