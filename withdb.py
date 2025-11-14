@@ -1,26 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import json
 import os
-from datetime import datetime
 from supabase import create_client, Client
 
 # -------------------- SUPABASE SETUP --------------------
 SUPABASE_URL = "https://jaztokuyzxettemexcrc.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImphenRva3V5enhldHRlbWV4Y3JjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NTU4OTMsImV4cCI6MjA3ODUzMTg5M30.I7Q-fAKRqYFzsJoyt7jQD1Vm1eB0sQKo17-ikA5VFBY"
+SUPABASE_KEY = "YOUR_SUPABASE_KEY_HERE"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-def get_auth_client():
-    token = st.session_state.get("access_token")
-    if not token:
-        return supabase
-    return create_client(
-        SUPABASE_URL,
-        SUPABASE_KEY,
-        {"Authorization": f"Bearer {token}"}
-    )
-
 
 # -------------------- PAGE SETUP --------------------
 st.set_page_config(page_title="SkillBot Career & Personality Profiler", layout="centered")
@@ -45,7 +32,8 @@ defaults = {
     "riasec_scores": None,
     "tci_scores": None,
     "sidebar_choice": "Home",
-    "user": None,  # Supabase user object
+    "user": None,
+    "access_token": None
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -64,6 +52,7 @@ def login_user(email, password):
 
 def logout_user():
     st.session_state.user = None
+    st.session_state.access_token = None
     st.session_state.sidebar_choice = "Home"
     st.success("Logged out successfully!")
 
@@ -75,12 +64,10 @@ def save_results_to_supabase(user_id, riasec, tci):
             "riasec": riasec.to_dict(),
             "tci": tci.to_dict()
         }).execute()
-
-        if response.data:
-            st.info("✅ Test results saved to your account.")
+        if response.error:
+            st.warning(f"⚠️ Could not save results: {response.error.message}")
         else:
-            st.warning("⚠️ Could not save results. Check your table schema or permissions.")
-
+            st.success("✅ Test results saved to your account.")
     except Exception as e:
         st.warning(f"⚠️ Could not save results: {e}")
 
@@ -89,22 +76,13 @@ def upload_marksheet(user_id, file):
         file_bytes = file.read()
         filename = f"{user_id}_{file.name}"
 
-        # Upload file
         supabase.storage.from_("marksheets").upload(filename, file_bytes)
-
-        # Get public URL (returns a string in v2)
         public_url = supabase.storage.from_("marksheets").get_public_url(filename)
 
         return public_url
-
     except Exception as e:
         st.error(f"Error uploading file: {e}")
         return None
-
-
-
-
-
 
 def save_profile(user_id, name, gender, age, qualification, marksheet_url):
     try:
@@ -116,18 +94,12 @@ def save_profile(user_id, name, gender, age, qualification, marksheet_url):
             "qualification": qualification,
             "marksheet_url": marksheet_url
         }).execute()
-
-        # Check if any data was returned
-        if response.data:
-            st.success("✅ Profile created successfully!")
+        if response.error:
+            st.warning(f"⚠️ Could not save profile: {response.error.message}")
         else:
-            st.warning("⚠️ Could not save profile. Check your table schema or permissions.")
-
+            st.success("✅ Profile created successfully!")
     except Exception as e:
         st.error(f"Failed to save profile: {e}")
-
-
-
 
 # -------------------- HELPER FUNCTIONS --------------------
 def next_question(selected):
@@ -149,7 +121,6 @@ def next_tci(selected):
 # =====================================================
 st.sidebar.title("🧭 Navigation")
 options = ["Home", "RIASEC Test", "TCI Test", "Dashboard", "Sign Up / Login", "Profile Creation (Hidden)"]
-
 choice = st.sidebar.radio("Choose a section:", options, index=options.index(st.session_state.sidebar_choice))
 st.session_state.sidebar_choice = choice
 
@@ -185,9 +156,9 @@ elif choice == "RIASEC Test":
             q = questions.iloc[q_idx]
             st.markdown(f"### Question {q_idx + 1} of {len(questions)}")
             st.markdown(f"**{q['question']}**")
-            options = {"Strongly Disagree":"😠","Disagree":"🙁","Neutral":"😐","Agree":"🙂","Strongly Agree":"🤩"}
-            cols = st.columns(len(options))
-            for i, (label, icon) in enumerate(options.items()):
+            options_map = {"Strongly Disagree":"😠","Disagree":"🙁","Neutral":"😐","Agree":"🙂","Strongly Agree":"🤩"}
+            cols = st.columns(len(options_map))
+            for i, (label, icon) in enumerate(options_map.items()):
                 if cols[i].button(f"{icon} {label}", key=f"riasec_q{q_idx}_{i}"):
                     next_question(label)
     elif st.session_state.page == "riasec_results":
@@ -307,7 +278,26 @@ elif choice == "Profile Creation (Hidden)":
             if not all([name, gender, age, qualification, marksheet]):
                 st.error("Please fill all fields.")
             else:
+                # Step 1: Upload marksheet
                 url = upload_marksheet(st.session_state.user.id, marksheet)
-                save_profile(st.session_state.user.id, name, gender, age, qualification, url)
+                if url:
+                    st.success("✅ Marksheet uploaded successfully!")
+                else:
+                    st.warning("⚠️ Failed to upload marksheet.")
+
+                # Step 2: Save profile
+                try:
+                    save_profile(st.session_state.user.id, name, gender, age, qualification, url)
+                except Exception as e:
+                    st.warning(f"⚠️ Could not save profile: {e}")
+
+                # Step 3: Save test results (if available)
                 if st.session_state.riasec_scores is not None and st.session_state.tci_scores is not None:
-                    save_results_to_supabase(st.session_state.user.id, st.session_state.riasec_scores, st.session_state.tci_scores)
+                    try:
+                        save_results_to_supabase(
+                            st.session_state.user.id,
+                            st.session_state.riasec_scores,
+                            st.session_state.tci_scores
+                        )
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not save test results: {e}")
