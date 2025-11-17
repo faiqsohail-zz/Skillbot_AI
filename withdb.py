@@ -58,19 +58,36 @@ def logout_user():
 # -------------------- DB SAVE HELPERS --------------------
 def save_results_to_supabase(user_id, riasec, tci):
     try:
+        # Convert Pandas Series to normal dict
+        riasec_dict = riasec.to_dict()
+        tci_dict = tci.to_dict()
+
         response = supabase.table("test_results").insert({
             "user_id": user_id,
-            "riasec": riasec.to_dict(),
-            "tci": tci.to_dict()
+
+            # ----- RIASEC -----
+            "riasec_R": riasec_dict.get("R"),
+            "riasec_I": riasec_dict.get("I"),
+            "riasec_A": riasec_dict.get("A"),
+            "riasec_S": riasec_dict.get("S"),
+            "riasec_E": riasec_dict.get("E"),
+            "riasec_C": riasec_dict.get("C"),
+
+            # ----- TCI -----
+            "tci_Persistence": tci_dict.get("Persistence"),
+            "tci_HarmAvoidance": tci_dict.get("Harm Avoidance"),
+            "tci_Cooperativeness": tci_dict.get("Cooperativeness"),
+            "tci_NoveltySeeking": tci_dict.get("Novelty Seeking"),
+            "tci_RewardDependence": tci_dict.get("Reward Dependence"),
+            "tci_SelfDirectedness": tci_dict.get("Self-Directedness"),
+            "tci_SelfTranscendence": tci_dict.get("Self-Transcendence"),
         }).execute()
 
-        if response.data is not None:
-            st.success("✅ Test results saved to your account.")
-        else:
-            st.warning("⚠️ Could not save results. Check your table schema or permissions.")
+        st.success("✅ Test results saved into separate columns!")
 
     except Exception as e:
-        st.warning(f"⚠️ Could not save results: {e}")
+        st.error(f"⚠️ Could not save results: {e}")
+
 
 def upload_marksheet(user_id, file):
     try:
